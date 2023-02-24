@@ -1,0 +1,20 @@
+{
+    "name": "io.github.vr-voyage.simple-scripts.remote-world-list-loader",
+    "references": [
+        "VRC.SDK3",
+        "VRC.SDKBase",
+        "UdonSharp.Lib",
+        "UdonSharp.Runtime",
+        "VRC.Udon.Serialization.OdinSerializer",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

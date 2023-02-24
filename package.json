@@ -1,0 +1,18 @@
+{
+	"name": "io.github.vr-voyage.simple-scripts.remote-world-list-loader",
+	"displayName": "Voyage's Simple Scripts : Remote World List Loader",
+	"version": "0.0.1",
+	"description": "A simple script to download a remote TSV world list, display it in a paginated list that open the right portal when clicked.",
+	"author" : {
+		"name" : "Voyage Voyage",
+		"url" : "https://github.com/vr-voyage"
+	},
+	"gitDependencies": {},
+	"vpmDependencies": {
+		"com.vrchat.worlds" : ">=3.1.11",
+		"com.vrchat.udonsharp": ">=1.1.7"
+	},
+	"legacyFolders": {},
+	"legacyFiles": {},
+	"unity": "2019.4"
+}
