@@ -1,4 +1,5 @@
 ﻿
+using JetBrains.Annotations;
 using System;
 using System.Linq;
 using UdonSharp;
@@ -15,12 +16,11 @@ public class RemoteWorldListLoader : UdonSharpBehaviour
     public int worldIDFieldNumber = 1;
     public int worldTitleFieldNumber = 5;
     public int worldAuthorFieldNumber = 4;
+    public int worldDescriptionFieldNumber = 0;
+    public int worldSizeFieldNumber = 0;
     public int numberOfFieldsPerLine = 6;
-    public Slider worldIDIndex;
     public VRCPortalMarker portalMarker;
-    const int worldsPerPage = 8;
-    public TMPro.TextMeshProUGUI[] textElements;
-    public RectTransform[] panels;
+    int worldsPerPage = 0;
     public Button[] navigationButtons;
 
     string[][] allWorldsInfo;
@@ -28,47 +28,65 @@ public class RemoteWorldListLoader : UdonSharpBehaviour
     int currentPageSize;
     int nPages;
 
-    int fieldWorldID = 0;
-    int fieldWorldTitle = 4;
-    int fieldWorldAuthor = 3;
-    int nFields = 6;
+    object[] uiFields;
+
     string[] dummyInfo;
 
     const int previousButton = 0;
     const int nextButton = 1;
 
-    const int textTitle = 0;
-    const int textAuthor = 1;
-    const int uiElementsPerElement = 2;
-   
-
+    public WorldPanelElement[] uiElements;
     
-
     GameObject portalMarkerObject;
+
+    string lastError;
+    int lastErrorCode;
+    public TMPro.TextMeshProUGUI errorOutput;
+
+    private void ShowWorld(int uiElementIndex, int worldIndex)
+    {
+        string[] worldInfo = allWorldsInfo[worldIndex];
+        var uiElement = uiElements[uiElementIndex];
+        int worldInfoLength = worldInfo.Length;
+
+        foreach (object uiFieldArray in uiFields)
+        {
+            object[] uiField = (object[]) uiFieldArray;
+
+            int tsvFieldIndex = (int)uiField[0];
+            string panelVariable = (string)uiField[1];
+            string panelUIMethod = (string)uiField[2];
+
+            if ((tsvFieldIndex >= 0) & (tsvFieldIndex < worldInfoLength))
+            {
+                
+                string worldField = worldInfo[tsvFieldIndex];
+                uiElement.SetProgramVariable(panelVariable, worldField);
+                uiElement.SendCustomEvent(panelUIMethod);
+            }
+        }
+    }
 
     private void HidePage()
     {
-        foreach (var panel in panels)
+        foreach (var uiElement in uiElements)
         {
-            panel.gameObject.SetActive(false);
+            uiElement.gameObject.SetActive(false);
         }
     }
 
     private void DisplayElement(int pageElement, int worldIndex)
     {
-        int uiElementsIndex = pageElement * uiElementsPerElement;
+        Debug.Log($"Showing {worldIndex} in {pageElement}");
         string[] worldFields = allWorldsInfo[worldIndex];
         if (worldFields == dummyInfo)
         {
             return;
         }
 
-        var uiTitle = textElements[uiElementsIndex + textTitle];
-        var uiAuthor = textElements[uiElementsIndex + textAuthor];
+        uiElements[pageElement].gameObject.SetActive(true);
+        ShowWorld(pageElement, worldIndex);
 
-        uiTitle.text = worldFields[fieldWorldTitle];
-        uiAuthor.text = worldFields[fieldWorldAuthor];
-        panels[pageElement].gameObject.SetActive(true);
     }
 
     private void ShowCurrentPage()
@@ -89,8 +107,6 @@ public class RemoteWorldListLoader : UdonSharpBehaviour
         int startWorldIndex = Mathf.Clamp(computedStart, 0, lastWorldIndex);
         int endWorldIndex = Mathf.Min(startWorldIndex + worldsPerPage, lastWorldIndex);
 
-        Debug.Log($"Display from ({computedStart}) {startWorldIndex} to {endWorldIndex} (Last : {lastWorldIndex})");
-
         for (
             int pageIndex = 0, currentWorldIndex = startWorldIndex;
             currentWorldIndex < endWorldIndex;
@@ -100,6 +116,8 @@ public class RemoteWorldListLoader : UdonSharpBehaviour
         }
         currentPageSize = endWorldIndex - startWorldIndex;
     }
+
+    bool checkingForErrors = false;
 
     private void OnEnable()
     {
@@ -115,74 +133,135 @@ public class RemoteWorldListLoader : UdonSharpBehaviour
             Debug.LogError($"[{name}] [{this.GetType().Name}] The number of fields don't match.");
             Debug.LogError($"[{name}] [{this.GetType().Name}] Max field is {numberOfFieldsPerLine}");
             Debug.LogError($"[{name}] [{this.GetType().Name}] One of the field number exceed this number");
-            enabled = false;
+            gameObject.SetActive(false);
             return;
         }
 
         if (url == null)
         {
             Debug.LogError($"[{name}] [{this.GetType().Name}] url not set. Disabling.");
-            enabled = false;
+            gameObject.SetActive(false);
             return;
         }
 
-        if (worldIDIndex == null)
+        if (numberOfFieldsPerLine < 1)
         {
-            Debug.LogError($"[{name}] [{this.GetType().Name}] textWithWorldID not set. Disabling.");
-            enabled = false;
+            Debug.LogError($"[{name}] [{this.GetType().Name}] Invalid nFields value. Disabling.");
+            gameObject.SetActive(false);
+            return;
+        }
+
+        if (worldIDFieldNumber < 1)
+        {
+            Debug.LogError($"[{name}] [{this.GetType().Name}] worldIDFieldNumber is invalid. Disabling.");
+            gameObject.SetActive(false);
+            return;
+        }
+
+        if (worldIDFieldNumber > numberOfFieldsPerLine)
+        {
+            Debug.LogError($"[{name}] [{this.GetType().Name}] The World ID field number is higher than the number of fields.");
+            gameObject.SetActive(false);
             return;
         }
 
         if (portalMarker == null)
         {
             Debug.LogError($"[{name}] [{this.GetType().Name}] portalMarker not set. Disabling.");
-            enabled = false;
+            gameObject.SetActive(false);
             return;
         }
 
-        fieldWorldID = worldIDFieldNumber - 1;
-        fieldWorldTitle = worldTitleFieldNumber - 1;
-        fieldWorldAuthor = worldAuthorFieldNumber - 1;
-        nFields = numberOfFieldsPerLine;
-        dummyInfo = new string[nFields];
-        for (int i = 0; i < nFields; i++)
+        uiFields = new object[]
+        {
+            new object[]
+            {
+                    worldIDFieldNumber - 1, nameof(WorldPanelElement.worldID), nameof(WorldPanelElement.WorldID)
+            },
+            new object[]
+            {
+                    worldTitleFieldNumber - 1, nameof(WorldPanelElement.worldTitle), nameof(WorldPanelElement.WorldTitle)
+            },
+            new object[]
+            {
+                    worldAuthorFieldNumber - 1, nameof(WorldPanelElement.worldAuthor), nameof(WorldPanelElement.WorldAuthor)
+            },
+            new object[]
+            {
+                    worldDescriptionFieldNumber - 1, nameof(WorldPanelElement.worldDescription), nameof(WorldPanelElement.WorldDescription)
+            },
+            new object[]
+            {
+                    worldSizeFieldNumber - 1, nameof(WorldPanelElement.worldSize), nameof(WorldPanelElement.WorldSize)
+            }
+        };
+
+        
+        dummyInfo = new string[numberOfFieldsPerLine];
+        for (int i = 0; i < numberOfFieldsPerLine; i++)
         {
             dummyInfo[i] = "";
         }
-
 
         portalMarkerObject = portalMarker.gameObject;
         nPages = 0;
         currentPage = 0;
         currentPageSize = 0;
         allWorldsInfo = new string[0][];
+
+        worldsPerPage = uiElements.Length;
+        foreach (var uiElement in uiElements)
+        {
+            uiElement.remoteWorldLoader = this;
+        }
+
         VRCStringDownloader.LoadUrl(url, (IUdonEventReceiver)this);
-        //pageElements = new Array[worldsPerPage];
-    }
 
-    string GetWorldFromPageElement(int element)
-    {
-        if (element < 0)
+        if ((errorOutput != null) & (checkingForErrors == false))
         {
-            Debug.LogWarning($"[{name}] [GetWorldFromPageElement] Negative index. ({element})");
-            return "";
+            checkingForErrors = true;
+            SendCustomEvent(nameof(CheckForError));
         }
-
-        if (element > currentPageSize)
-        {
-            Debug.LogWarning($"[{name}] [GetWorldFromPageElement] Exceeding Page size ! ({element})");
-            return "";
-        }
-
-        int worldIndex = (currentPage * worldsPerPage) + element;
-        return (worldIndex < allWorldsInfo.Length ? allWorldsInfo[worldIndex][fieldWorldID] : "");
 
     }
 
-    public void OpenPortal()
+    [HideInInspector]
+    [UdonSynced]
+    public string selectedWorldID;
+
+    void OpenPortal()
     {
-        portalMarker.roomId = GetWorldFromPageElement((int)worldIDIndex.value);
-        portalMarkerObject.SetActive(true);
+        if ((selectedWorldID != null) & (selectedWorldID != ""))
+        {
+            portalMarker.roomId = selectedWorldID;
+            portalMarkerObject.SetActive(true);
+        }
+
+    }
+
+    public override void OnDeserialization()
+    {
+        Debug.Log($"<color=orange>DESERIALIZED : Selected world ID {selectedWorldID}</color>");
+        OpenPortal();
+    }
+
+    public override void OnOwnershipTransferred(VRCPlayerApi player)
+    {
+        RequestSerialization();
+    }
+
+    public void ActivePortal(string worldID)
+    {
+        selectedWorldID = worldID;
+        OpenPortal();
+        if (Networking.GetOwner(gameObject) != Networking.LocalPlayer)
+        {
+            Networking.SetOwner(Networking.LocalPlayer, gameObject);
+        }
+        else
+        {
+            RequestSerialization();
+        }
     }
 
     public void ClosePortal()
@@ -193,7 +272,6 @@ public class RemoteWorldListLoader : UdonSharpBehaviour
     public void RefreshPageButtons()
     {
         navigationButtons[previousButton].gameObject.SetActive(currentPage > 0);
-        Debug.Log($"{currentPage} < {nPages - 1}");
         navigationButtons[nextButton].gameObject.SetActive(currentPage < (nPages - 1));
     }
 
@@ -225,9 +303,9 @@ public class RemoteWorldListLoader : UdonSharpBehaviour
         for (int line = 0; line < nLines; line++)
         {
             var fields = lines[line].Split('\t');
-            if (fields.Length < 6)
+            if (fields.Length < numberOfFieldsPerLine)
             {
-                Debug.Log($"Not enough fields. Expected 6 got {fields.Length}");
+                Debug.Log($"Not enough fields. Expected {numberOfFieldsPerLine} got {fields.Length}");
                 fields = dummyInfo;
             }
             allWorldsInfo[line] = fields;
@@ -235,14 +313,29 @@ public class RemoteWorldListLoader : UdonSharpBehaviour
         currentPage = 0;
         nPages = (nLines > 0 ? (nLines - 1) / worldsPerPage : 0) + 1;
 
-        Debug.Log($"nPages : {nPages}");
         HidePage();
         RefreshPageButtons();
         ShowCurrentPage();
     }
 
+
+
     public override void OnStringLoadError(IVRCStringDownload result)
     {
-        Debug.LogError("String loading failed !");
+        lastError = result.Error;
+        lastErrorCode = result.ErrorCode;
+    }
+
+    void CheckForError()
+    {
+
+        if (lastError != null)
+        {
+            errorOutput.text =
+                $"Failed to load {url}\nError code : {lastErrorCode}\nError : {lastError}\n";
+            lastError = null;
+        }
+        SendCustomEventDelayedSeconds(nameof(CheckForError), 2);
+
     }
 }
